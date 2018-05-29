@@ -1,0 +1,183 @@
+)---
+title: "Military NLP"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(readxl)
+# bios_data_1 <- read_excel("data/Bios May 18 2018 A-E.xlsx", sheet = 1)
+# bios_data_2 <- read_excel("data/Bios May 18 2018 F-J.xlsx", sheet = 1)
+# bios_data_3 <- read_excel("data/Bios May 18 2018 K-O.xlsx", sheet = 1)
+# bios_data_4 <- read_excel("data/Bios May 18 2018 Other.xlsx", sheet = 1)
+# bios_data_5 <- read_excel("data/Bios May 18 2018 P-T.xlsx", sheet = 1)
+# bios_data_6 <- read_excel("data/Bios May 18 2018 U-Z.xlsx", sheet = 1)
+# 
+# bios_data <- Reduce(rbind, list(bios_data_1, bios_data_2, bios_data_3, bios_data_4, bios_data_5, bios_data_6))
+
+# bios_data <- bios_data %>%
+#         filter(!is.na(Bio), ExecutiveSECID != 0)
+
+# save(bios_data, file = "all_bios_combined.RData")
+
+load(file = "all_bios_combined_1.RData")
+```
+
+```{r}
+head(bios_data)
+```
+
+# figure out whether Bios and Names Match
+```{r}
+index_bios_name_mistmatch <- c()
+for (i in 1:dim(bios_data)[1]) {
+        if (is.na(str_split(unlist(bios_data[i,1]), "[\\s|,]+")[[1]][2]) | !str_detect(unlist(bios_data[i, "Bio"]), trimws(str_split(unlist(bios_data[i,1]), "[\\s|,]+")[[1]][2])) & !str_detect(unlist(bios_data[i, "Bio"]), trimws(str_split(unlist(bios_data[i,1]), "[\\s|,]+")[[1]][1]))) {
+                index_bios_name_mistmatch <- c(index_bios_name_mistmatch, i)
+        }       
+}
+
+head(index_bios_name_mistmatch)
+
+head(bios_data[index_bios_name_mistmatch, c("Bio", "EXEC_Name")])
+
+# library(xlsx)
+# write.xlsx(as.data.frame(bios_data[index_bios_name_mistmatch, ]), "bio_name_mismatch_.xlsx", row.names = F)
+```
+
+# People with only first name
+```{r}
+temp <- c()
+
+for (i in 1:dim(bios_data)[1]) {
+        if (is.na(str_split(unlist(bios_data[i,1]), "[\\s|,]+")[[1]][2])) {
+                temp <- c(temp, i)
+        }       
+}
+
+
+temp
+
+bios_data[temp, ]
+```
+
+# Exclude bio/name mismatch
+```{r}
+index_bios_name_mistmatch <- setdiff(index_bios_name_mistmatch, temp)
+
+bios_data <- bios_data[-index_bios_name_mistmatch,]
+
+save(bios_data, file = "all_bios_combined_1.RData")
+```
+
+
+## Some insiders have Reuter's ID but not Bio and vice-versa
+```{r}
+bios_data %>%
+        filter(ReutersID == 0) %>%
+        nrow()
+
+bios_data %>%
+        filter(is.na(Bio)) %>%
+        nrow()
+
+bios_data %>%
+        filter(!is.na(Bio), ReutersID == 0) %>%
+        head()
+
+bios_data %>%
+        filter(is.na(Bio), ReutersID != 0) %>%
+        head()
+```
+
+## Find military Background
+```{r}
+bios_military <- bios_data$Bio
+pat_1 <- bios_military[str_detect(bios_military, "[M|m]ilitary")]
+pat_2 <- bios_military[str_detect(bios_military, "[A|a]rmy")]
+pat_3 <- bios_military[str_detect(bios_military, "[M|m]arine")]
+pat_4 <- bios_military[str_detect(bios_military, "[N|n]avy")]
+pat_5 <- bios_military[str_detect(bios_military, "[A|a]ir[\\s|-]*[F|f]orce")]
+
+list_key_words <- list()
+index_1 <- which(str_detect(bios_military, "[M|m]ilitary"))
+list_key_words[["Military"]] <- index_1
+index_2 <- which(str_detect(bios_military, "[A|a]rmy"))
+list_key_words[["Army"]] <- index_2
+index_3 <- which(str_detect(bios_military, "[M|m]arine"))
+list_key_words[["Marine"]] <- index_3
+index_4 <- which(str_detect(bios_military, "[N|n]avy"))
+list_key_words[["Navy"]] <- index_4
+index_5 <- which(str_detect(bios_military, "[A|a]ir[\\s]*[F|f]orce"))
+list_key_words[["Air Force"]] <- index_5
+index_6 <- which(str_detect(bios_military, "[W|w]est[\\s]+[P|p]oint"))
+list_key_words[["West Point"]] <- index_6
+index_7 <- which(str_detect(bios_military, "[C|c]oast[\\s]*[G|g]uard"))
+list_key_words[["Coast Guard"]] <- index_7
+
+index_tot <- Reduce(union ,list(index_1, index_2, index_3, index_4, index_5))
+```
+
+## Find keywords
+```{r}
+temp_index <- which(str_detect(bios_military, "[S|s]ergeant"))
+length(temp_index)
+head(bios_military[temp_index])
+```
+
+
+```{r}
+bios_military_data_tagged <- bios_data
+
+add_tags <- function(x) {
+        
+        for (i in 1:length(x)) {
+                
+                temp <- bios_military_data_tagged[x[[i]], ]
+                temp$Tag <- sapply(temp$Tag, function(y) ifelse(is.na(y), names(x)[i], paste0(y, ", ", names(x)[i]))) 
+                bios_military_data_tagged[x[[i]], "Tag"] <- temp$Tag
+        }
+        
+        return(bios_military_data_tagged)
+}
+
+bios_military_data_tagged <- add_tags(list_key_words)
+
+head(bios_military_data_tagged[list_key_words[[5]], ])
+```
+
+```{r}
+View(bios_military_data_tagged[index_tot,])
+
+bios_military_data_tagged %>%
+        filter(EXEC_Name == "David Oliver") %>%
+        select(Bio) %>%
+        unlist()
+```
+
+
+## read in former interns work
+```{r}
+intern_military  <- read.csv("Former_Intern/military.csv", stringsAsFactors = F)
+intern_military <- intern_military[,-1]
+head(intern_military)
+```
+
+```{r}
+intern_military_clean <- intern_military %>%
+        filter(ExecutiveSECID != 0, !is.na(Bio))
+dim(intern_military_clean)
+
+diff_my_intern <- setdiff(intern_military_clean$ExecutiveSECID, bios_military_data_tagged$ExecutiveSECID[index_tot])
+length(diff_my_intern)
+length(intersect(intern_military_clean$ExecutiveSECID, bios_military_data_tagged$ExecutiveSECID[index_tot]))
+
+dim(bios_military_data_tagged[index_tot,])
+
+check <- intern_military_clean %>%
+        filter(ExecutiveSECID %in% diff_my_intern)
+dim(check)
+
+# library(xlsx)
+write.xlsx(check, "check.xlsx", row.names = F)
+```
+
