@@ -1,0 +1,119 @@
+---
+title: "get_stat(I only focus on 'Net_Return_1yr' here)"
+author: "Xueying Ding"
+date: "June 5, 2018"
+output: html_document
+---
+
+#define function 1
+```{r}
+describe <- function(df){
+  vec <- c(nrow(df),
+         mean(df$net_return_1yr),
+         sd(df$net_return_1yr),
+         unlist(summary(df$net_return_1yr))[c(1:3,5:6)],
+         sum(df$`beating sector`),
+         sum(df$`beating sector`)/nrow(df))
+  return(round(vec,2))
+}
+```
+
+#read in summary
+```{r}
+#read in
+load("df.RData")
+summary <- read.table("E:/desktop/Insider/Connor & Xueying/summary1 recent.txt",sep = ",")
+header <- read.table("E:/desktop/Insider/Connor & Xueying/summary1 header.txt",sep = ",")
+colnames(summary) <- as.vector(header$V1)
+summary <- summary[!is.na(summary$net_return_1yr),]
+colnames(summary)[2] <- "ExecutiveSECID"
+colnames(summary)[4] <- "Position"
+colnames(summary)[5] <- "Options"
+summary <- summary[(!is.na(summary$ExecutiveSECID) & !is.na(summary$SEC_Company_ID)),]
+
+#get rid of outliers
+#I only want to consider 'net_return_1yr'
+summary <- summary[(summary$price >= 1 & summary$Options == 0 & summary$`Market_Cap (in billions)` > 0),]
+#I just use z-score once to eliminate outliers
+summary$net_return_1yr_z <- scale(summary$net_return_1yr)
+summary <- summary[abs(summary$net_return_1yr_z) < 3,]
+
+#correct the 'sector beating'
+summary$`beating sector` <- ifelse(summary$Position * summary$net_return_1yr > 0,1,0)
+
+#join
+library(dplyr)
+df_summary <- inner_join(df,summary)
+```
+
+#define function
+```{r}
+get_stat <- function(attribute,tag){
+  #input:attribute(e.g. "MBA")
+  #      tag(e.g. "P_MBA")
+  #output:csv file(e.g. named as MBA result.csv)
+  
+  #build data frame
+  stat <- data.frame(matrix(NA,nrow = 4,ncol = 12))
+  colnames(stat) <- c("","transaction count","mean","std","min","25pct","50pct","75pct",
+                    "max","beat count","beat/transaction","position")
+  stat[,1] <- rep(c(attribute,paste0("non-",attribute)),2)
+  stat$position <- c("buy","buy","sell","sell")
+  
+  
+  attribute_buy <- df_summary[(!is.na(df_summary[,tag]) & df_summary$Position == 1),]
+  non_attribute_buy <- df_summary[(is.na(df_summary[,tag]) & df_summary$Position == 1),]
+  attribute_sell <- df_summary[(!is.na(df_summary[,tag]) & df_summary$Position == -1),]
+  non_attribute_sell <- df_summary[(is.na(df_summary[,tag]) & df_summary$Position == -1),]
+
+  stat[1,2:11] <- describe(attribute_buy)
+  stat[2,2:11] <- describe(non_attribute_buy)
+  stat[3,2:11] <- describe(attribute_sell)
+  stat[4,2:11] <- describe(non_attribute_sell)
+  
+  return(write.table(stat,paste(attribute,"result.csv"),col.names = T,row.names = F,sep = ","))
+}
+```
+
+
+
+
+
+
+#######################################################
+#APPLY#################################################
+#######################################################
+
+```{r}
+get_stat("MBA","P_MBA")
+get_stat("Law","P_Law")
+get_stat("Medicine","P_Medicine")
+#you have to use different data frame(data_founder) to get df
+get_stat("Founder","Founder")
+```
+
+
+#for categories can't apply formal function
+```{r}
+#compare people with advanced degree in professional area
+#        and people with advanced degree in research area
+stat <- data.frame(matrix(NA,nrow = 4,ncol = 12))
+colnames(stat) <- c("","transaction count","mean","std","min","25pct","50pct","75pct",
+                    "max","beat count","beat/transaction","position")
+stat[,1] <- rep(c("Professional","Research"),2)
+stat$position <- c("buy","buy","sell","sell")
+  
+  
+professional_buy <- df_summary[(!is.na(df_summary$P) & df_summary$Position == 1),]
+research_buy <- df_summary[(is.na(df_summary$R) & df_summary$Position == 1),]
+professional_sell <- df_summary[(!is.na(df_summary$P) & df_summary$Position == -1),]
+research_sell <- df_summary[(is.na(df_summary$R) & df_summary$Position == -1),]
+
+stat[1,2:11] <- describe(professional_buy)
+stat[2,2:11] <- describe(research_buy)
+stat[3,2:11] <- describe(professional_sell)
+stat[4,2:11] <- describe(research_sell)
+
+write.table(stat,paste("Professional vs Research result.csv"),col.names = T,row.names = F,sep = ",")
+```
+
